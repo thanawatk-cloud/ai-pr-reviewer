@@ -3,6 +3,17 @@ import { Octokit } from "@octokit/rest";
 
 const MAX_PATCH_CHARS = 80_000; // ~20k tokens per file patch
 
+const EXCLUDED_PATTERNS = [
+  /package-lock\.json$/,
+  /yarn\.lock$/,
+  /pnpm-lock\.yaml$/,
+  /\.min\.(js|css)$/,
+  /dist\//,
+  /build\//,
+  /node_modules\//,
+  /\.snap$/,
+];
+
 interface PRFile {
   filename: string;
   status: string;
@@ -118,8 +129,18 @@ async function main() {
   console.log(`Reviewing PR #${prNumber}: ${pr.title}`);
 
   // Get PR files
-  const files = await getPRFiles(octokit, owner, repo, prNumber);
-  console.log(`Found ${files.length} changed files`);
+  const allFiles = await getPRFiles(octokit, owner, repo, prNumber);
+  const files = allFiles.filter(
+    (f) =>
+      f.status !== "removed" &&
+      !EXCLUDED_PATTERNS.some((pattern) => pattern.test(f.filename))
+  );
+  console.log(`Found ${allFiles.length} changed files, reviewing ${files.length} after filtering`);
+
+  if (files.length === 0) {
+    console.log("No reviewable files after filtering. Skipping.");
+    return;
+  }
 
   const diff = buildDiffContent(files);
 
